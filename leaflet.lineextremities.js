@@ -69,12 +69,21 @@ var PolylineExtremities = {
     },
 
     _drawExtremities: function () {
-        var pattern = this._pattern;
-        this.showExtremities(pattern);
+        //var pattern = this._pattern;
+        this.showExtremities(this._patternStart, this._patternMid, this._patternEnd);
     },
 
-    showExtremities: function (pattern) {
-        this._pattern = pattern;
+    /* showExtremities(pat)          ->  (pat, false, pat)
+     * showExtremities(patS, patE)   ->  (patS, false, patE)
+     */
+    showExtremities: function (patternStart, patternMid, patternEnd) {
+        if (typeof patternEnd === 'undefined') {
+            patternEnd = (typeof patternMid === 'undefined') ? patternStart : patternMid;
+            patternMid = false;
+        }
+        this._patternStart = patternStart;
+        this._patternMid = patternMid;
+        this._patternEnd = patternEnd;
 
         /* If not in SVG mode or Polyline not added to map yet return */
         /* showExtremities will be called by onAdd, using value stored in this._pattern */
@@ -83,7 +92,7 @@ var PolylineExtremities = {
         }
 
         /* If empty pattern, hide */
-        if (!pattern) {
+        if (!patternStart) {
             if (this._patternNode && this._patternNode.parentNode)
                 this._map._pathRoot.removeChild(this._patternNode);
             return this;
@@ -102,38 +111,83 @@ var PolylineExtremities = {
 
         // Add the marker to the line
         var id = 'pathdef-' + L.Util.stamp(this);
+        var idS = id + '-S';
+        var idM = id + '-M';
+        if (patternStart === patternEnd) {
+            var idE = idS;
+            var patlist = [[idS, patternStart]];
+        } else {
+            var idE = id + '-E';
+            var patlist = [[idS, patternStart], [idE, patternEnd]];
+        }
         this._path.setAttribute('stroke-linecap', 'butt');
         this._path.setAttribute('id', id);
-        this._path.setAttribute('marker-start', 'url(#' + id + ')');
-        this._path.setAttribute('marker-end', 'url(#' + id + ')');
+        this._path.setAttribute('marker-start', 'url(#' + idS + ')');
+        this._path.setAttribute('marker-end', 'url(#' + idE + ')');
+        if (patternMid) {
+            patlist.push([idM, patternMid]);
+            this._path.setAttribute('marker-mid', 'url(#' + idM + ')');
+        }
 
-        var markersNode = document.createElementNS("http://www.w3.org/2000/svg", 'marker'),
-            markerPath = document.createElementNS("http://www.w3.org/2000/svg", 'path'),
-            symbol = PolylineExtremities.SYMBOLS[pattern];
+        for (const [id, pattern] of patlist) {
+            if ( ! pattern )
+                continue;
 
-        // Create the markers definition
-        markersNode.setAttribute('id', id);
-        for (var attr in symbol) {
-            if (attr != 'path') {
-                markersNode.setAttribute(attr, symbol[attr]);
-            } else{
-                markerPath.setAttribute('d', symbol[attr]);
+            var markersNode = document.createElementNS("http://www.w3.org/2000/svg", 'marker'),
+                markerPath = document.createElementNS("http://www.w3.org/2000/svg", 'path'),
+                symbol = PolylineExtremities.SYMBOLS[pattern];
+
+            // Create the markers definition
+            markersNode.setAttribute('id', id);
+
+            //if (typeof symbol === 'undefined') {
+            if (typeof pattern !== 'string') {
+                // Copy user marker definition
+                for (var attr in pattern) {
+                    if (attr == 'path') {
+                        markerPath.setAttribute('d', pattern[attr]);
+                    } else{
+                        markersNode.setAttribute(attr, pattern[attr]);
+                    }
+                }
+                // Copy the path apparence to the marker
+                var styleProperties = ['class', 'stroke', 'stroke-opacity'];
+                for (var i=0; i<styleProperties.length; i++) {
+                    var styleProperty = styleProperties[i];
+                    var pathProperty = this._path.getAttribute(styleProperty);
+                    if (!(styleProperty in pattern))
+                        markersNode.setAttribute(styleProperty, pathProperty);
+                }
+                // Fill missing attributes
+                if (!('fill' in pattern))
+                    markersNode.setAttribute('fill', markersNode.getAttribute('stroke'));
+                if (!('fill-opacity' in pattern))
+                    markersNode.setAttribute('fill-opacity', markersNode.getAttribute('stroke-opacity'));
+            } else {
+                // Copy marker pattern definition
+                for (var attr in symbol) {
+                    if (attr == 'path') {
+                        markerPath.setAttribute('d', symbol[attr]);
+                    } else{
+                        markersNode.setAttribute(attr, symbol[attr]);
+                    }
+                }
+
+                // Copy the path apparence to the marker
+                var styleProperties = ['class', 'stroke', 'stroke-opacity'];
+                for (var i=0; i<styleProperties.length; i++) {
+                    var styleProperty = styleProperties[i];
+                    var pathProperty = this._path.getAttribute(styleProperty);
+                    markersNode.setAttribute(styleProperty, pathProperty);
+                }
+                markersNode.setAttribute('fill', markersNode.getAttribute('stroke'));
+                markersNode.setAttribute('fill-opacity', markersNode.getAttribute('stroke-opacity'));
+                markersNode.setAttribute('stroke-opacity', '0');
             }
-        }
 
-        // Copy the path apparence to the marker
-        var styleProperties = ['class', 'stroke', 'stroke-opacity'];
-        for (var i=0; i<styleProperties.length; i++) {
-            var styleProperty = styleProperties[i];
-            var pathProperty = this._path.getAttribute(styleProperty);
-            markersNode.setAttribute(styleProperty, pathProperty);
-        }
-        markersNode.setAttribute('fill', markersNode.getAttribute('stroke'));
-        markersNode.setAttribute('fill-opacity', markersNode.getAttribute('stroke-opacity'));
-        markersNode.setAttribute('stroke-opacity', '0');
-
-        markersNode.appendChild(markerPath);
-        defsNode.appendChild(markersNode);
+            markersNode.appendChild(markerPath);
+            defsNode.appendChild(markersNode);
+          }
 
         return this;
     }
@@ -154,3 +208,4 @@ L.LayerGroup.include({
 });
 
 })();
+// vim:ts=2:sts=2:expandtab:
